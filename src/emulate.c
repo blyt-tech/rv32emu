@@ -2339,7 +2339,7 @@ void rv_step(void *arg)
     if (unlikely(++gc_counter == 0))
         memory_gc();
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && !defined(RV32EMU_MANAGED_BY_HOST)
     if (rv_has_halted(rv)) {
         emscripten_cancel_main_loop();
         rv_delete(rv); /* clean up and reuse memory */
