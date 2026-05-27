@@ -742,7 +742,7 @@ FORCE_INLINE bool insn_is_branch(uint8_t opcode)
  * Matches RVOP macro signal handling and block map clearing logic.
  * Note: RVOP returns without saving cycle/PC on signal handling, so we do too.
  */
-static inline bool fuse_next_or_stop(riscv_t *rv,
+static PRESERVE_NONE bool fuse_next_or_stop(riscv_t *rv,
                                      const rv_insn_t *ir,
                                      uint64_t cycle,
                                      uint32_t PC)
