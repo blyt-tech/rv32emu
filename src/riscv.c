@@ -598,6 +598,9 @@ riscv_t *rv_create(riscv_user_t rv_attr)
         return NULL;
     assert(rv);
 
+    /* A fresh VM must not chain into blocks cached from a previous VM. */
+    rv_block_chain_reset();
+
 #if RV32_HAS(SYSTEM_MMIO)
     /* register cleaning callback for CTRL+a+x exit */
     atexit(rv_async_block_clear);
@@ -1077,6 +1080,10 @@ void rv_delete(riscv_t *rv)
 {
     assert(rv);
     vm_attr_t *attr = PRIV(rv);
+    /* The inter-step chaining cache may point into this VM's blocks; clear
+     * it before they are freed (use-after-free on the next rv_step of a
+     * subsequently created VM otherwise). */
+    rv_block_chain_reset();
 #if !RV32_HAS(JIT)
     map_delete(attr->fd_map);
     memory_delete(attr->mem);

@@ -1843,6 +1843,15 @@ static void optimize_constant(riscv_t *rv UNUSED, block_t *block)
 }
 
 static block_t *prev = NULL;
+
+/* see riscv_private.h — called from rv_create/rv_delete so a new VM never
+ * chains into a previous VM's freed blocks */
+void rv_block_chain_reset(void)
+{
+    prev = NULL;
+    last_pc = 0;
+}
+
 static block_t *block_find_or_translate(riscv_t *rv)
 {
 #if !RV32_HAS(JIT)

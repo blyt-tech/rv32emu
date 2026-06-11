@@ -232,6 +232,13 @@ typedef struct {
 /* clear all block in the block map */
 void block_map_clear(riscv_t *rv);
 
+/* Reset the file-scope inter-step block-chaining cache in emulate.c
+ * (`prev` block pointer and `last_pc`).  Must be called whenever a VM is
+ * created or destroyed: the cached `prev` may point into freed block-map
+ * memory from a previous VM, and dereferencing it in the next rv_step is a
+ * use-after-free (observed as a SIGSEGV after destroy/re-create cycles). */
+void rv_block_chain_reset(void);
+
 struct riscv_internal {
     bool halt; /**< indicate whether the core is halted */
 
