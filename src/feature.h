@@ -45,6 +45,19 @@
 #define RV32_FEATURE_EXT_F 1
 #endif
 
+/* Standard Extension for Double-Precision Floating Point Instructions.
+ * D implies F (the register file is shared, widened to 64-bit FLEN with
+ * single-precision values NaN-boxed in the high bits).  Spike U: enables the
+ * RV32IMAFDC / ilp32d hardware-double path, wired to the vendored Berkeley
+ * SoftFloat f64_* kernels (src/softfloat).
+ */
+#ifndef RV32_FEATURE_EXT_D
+#define RV32_FEATURE_EXT_D 1
+#endif
+#if RV32_FEATURE_EXT_D && !RV32_FEATURE_EXT_F
+#error "RV32_FEATURE_EXT_D requires RV32_FEATURE_EXT_F"
+#endif
+
 /* Standard Extension for Compressed Instructions */
 #ifndef RV32_FEATURE_EXT_C
 #define RV32_FEATURE_EXT_C 1

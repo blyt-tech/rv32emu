@@ -86,6 +86,56 @@ static inline bool is_nan(uint32_t f)
     return (expn == FMASK_EXPN && frac);
 }
 
+/* Double-precision (RV32D) field masks and helpers — 64-bit siblings of the
+ * single-precision constants above (Spike U). */
+/* clang-format off */
+enum {
+    FMASK_SIGN_D = 0x8000000000000000ULL, /* bit 63          */
+    FMASK_EXPN_D = 0x7FF0000000000000ULL, /* bits 62..52     */
+    FMASK_FRAC_D = 0x000FFFFFFFFFFFFFULL, /* bits 51..0      */
+    FMASK_QNAN_D = 0x0008000000000000ULL, /* bit 51          */
+    RV_NAN_D     = 0x7FF8000000000000ULL  /* canonical qNaN  */
+};
+/* clang-format on */
+
+/* compute the fclass result for a double */
+static inline uint32_t calc_fclass_d(uint64_t f)
+{
+    const uint64_t sign = f & FMASK_SIGN_D;
+    const uint64_t expn = f & FMASK_EXPN_D;
+    const uint64_t frac = f & FMASK_FRAC_D;
+
+    uint32_t out = 0;
+
+    /* Same 10-way classification as calc_fclass (see above) */
+    if (expn) {
+        if (expn != FMASK_EXPN_D) {
+            out = sign ? 0x002 : 0x040;
+        } else {
+            if (frac) {
+                out = frac & FMASK_QNAN_D ? 0x200 : 0x100;
+            } else if (!sign) {
+                out = 0x080;
+            } else {
+                out = 0x001;
+            }
+        }
+    } else if (frac) {
+        out = sign ? 0x004 : 0x020;
+    } else {
+        out = sign ? 0x008 : 0x010;
+    }
+
+    return out;
+}
+
+static inline bool is_nan_d(uint64_t f)
+{
+    const uint64_t expn = f & FMASK_EXPN_D;
+    const uint64_t frac = f & FMASK_FRAC_D;
+    return (expn == FMASK_EXPN_D && frac);
+}
+
 static inline void set_fflag(riscv_t *rv)
 {
     if (softfloat_exceptionFlags & softfloat_flag_invalid)
