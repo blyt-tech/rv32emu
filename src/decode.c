@@ -1205,7 +1205,18 @@ static inline bool op_load_fp(rv_insn_t *ir, const uint32_t insn)
     /* decode I-type */
     decode_itype(ir, insn);
 
-    ir->opcode = rv_insn_flw;
+    switch (decode_funct3(insn)) {
+    case 0b010: /* FLW */
+        ir->opcode = rv_insn_flw;
+        break;
+#if RV32_HAS(EXT_D)
+    case 0b011: /* FLD */
+        ir->opcode = rv_insn_fld;
+        break;
+#endif
+    default: /* illegal instruction */
+        return false;
+    }
     return true;
 }
 
@@ -1223,7 +1234,18 @@ static inline bool op_store_fp(rv_insn_t *ir, const uint32_t insn)
     /* decode S-type */
     decode_stype(ir, insn);
 
-    ir->opcode = rv_insn_fsw;
+    switch (decode_funct3(insn)) {
+    case 0b010: /* FSW */
+        ir->opcode = rv_insn_fsw;
+        break;
+#if RV32_HAS(EXT_D)
+    case 0b011: /* FSD */
+        ir->opcode = rv_insn_fsd;
+        break;
+#endif
+    default: /* illegal instruction */
+        return false;
+    }
     return true;
 }
 
@@ -1365,6 +1387,105 @@ static inline bool op_op_fp(rv_insn_t *ir, const uint32_t insn)
     case 0b1111000: /* FMV.W.X */
         ir->opcode = rv_insn_fmvwx;
         break;
+#if RV32_HAS(EXT_D)
+    /* RV32D: the .D funct7 is the matching .S funct7 with the fmt bit set. */
+    case 0b0000001: /* FADD.D */
+        ir->opcode = rv_insn_faddd;
+        break;
+    case 0b0000101: /* FSUB.D */
+        ir->opcode = rv_insn_fsubd;
+        break;
+    case 0b0001001: /* FMUL.D */
+        ir->opcode = rv_insn_fmuld;
+        break;
+    case 0b0001101: /* FDIV.D */
+        ir->opcode = rv_insn_fdivd;
+        break;
+    case 0b0101101: /* FSQRT.D */
+        ir->opcode = rv_insn_fsqrtd;
+        break;
+    case 0b0010001:
+        switch (ir->rm) {
+        case 0b000: /* FSGNJ.D */
+            ir->opcode = rv_insn_fsgnjd;
+            break;
+        case 0b001: /* FSGNJN.D */
+            ir->opcode = rv_insn_fsgnjnd;
+            break;
+        case 0b010: /* FSGNJX.D */
+            ir->opcode = rv_insn_fsgnjxd;
+            break;
+        default: /* illegal instruction */
+            return false;
+        }
+        break;
+    case 0b0010101:
+        switch (ir->rm) {
+        case 0b000: /* FMIN.D */
+            ir->opcode = rv_insn_fmind;
+            break;
+        case 0b001: /* FMAX.D */
+            ir->opcode = rv_insn_fmaxd;
+            break;
+        default: /* illegal instruction */
+            return false;
+        }
+        break;
+    case 0b0100000: /* FCVT.S.D (rs2=00001) */
+        if (ir->rs2 != 0b00001)
+            return false;
+        ir->opcode = rv_insn_fcvtsd;
+        break;
+    case 0b0100001: /* FCVT.D.S (rs2=00000) */
+        if (ir->rs2 != 0b00000)
+            return false;
+        ir->opcode = rv_insn_fcvtds;
+        break;
+    case 0b1100001:
+        switch (ir->rs2) {
+        case 0b00000: /* FCVT.W.D */
+            ir->opcode = rv_insn_fcvtwd;
+            break;
+        case 0b00001: /* FCVT.WU.D */
+            ir->opcode = rv_insn_fcvtwud;
+            break;
+        default: /* illegal instruction */
+            return false;
+        }
+        break;
+    case 0b1101001:
+        switch (ir->rs2) {
+        case 0b00000: /* FCVT.D.W */
+            ir->opcode = rv_insn_fcvtdw;
+            break;
+        case 0b00001: /* FCVT.D.WU */
+            ir->opcode = rv_insn_fcvtdwu;
+            break;
+        default: /* illegal instruction */
+            return false;
+        }
+        break;
+    case 0b1010001:
+        switch (ir->rm) {
+        case 0b010: /* FEQ.D */
+            ir->opcode = rv_insn_feqd;
+            break;
+        case 0b001: /* FLT.D */
+            ir->opcode = rv_insn_fltd;
+            break;
+        case 0b000: /* FLE.D */
+            ir->opcode = rv_insn_fled;
+            break;
+        default: /* illegal instruction */
+            return false;
+        }
+        break;
+    case 0b1110001: /* FCLASS.D (rm=001); FMV.X.D is RV64-only */
+        if (ir->rm != 0b001)
+            return false;
+        ir->opcode = rv_insn_fclassd;
+        break;
+#endif
     default: /* illegal instruction */
         return false;
     }
@@ -1385,7 +1506,18 @@ static inline bool op_madd(rv_insn_t *ir, const uint32_t insn)
     /* decode R4-type */
     decode_r4type(ir, insn);
 
-    ir->opcode = rv_insn_fmadds;
+    switch (decode_funct7(insn) & 0x3) { /* fmt: 00=S, 01=D */
+    case 0b00:
+        ir->opcode = rv_insn_fmadds;
+        break;
+#if RV32_HAS(EXT_D)
+    case 0b01:
+        ir->opcode = rv_insn_fmaddd;
+        break;
+#endif
+    default: /* illegal instruction */
+        return false;
+    }
     return true;
 }
 
@@ -1403,7 +1535,18 @@ static inline bool op_msub(rv_insn_t *ir, const uint32_t insn)
     /* decode R4-type */
     decode_r4type(ir, insn);
 
-    ir->opcode = rv_insn_fmsubs;
+    switch (decode_funct7(insn) & 0x3) { /* fmt: 00=S, 01=D */
+    case 0b00:
+        ir->opcode = rv_insn_fmsubs;
+        break;
+#if RV32_HAS(EXT_D)
+    case 0b01:
+        ir->opcode = rv_insn_fmsubd;
+        break;
+#endif
+    default: /* illegal instruction */
+        return false;
+    }
     return true;
 }
 
@@ -1421,7 +1564,18 @@ static inline bool op_nmadd(rv_insn_t *ir, const uint32_t insn)
     /* decode R4-type */
     decode_r4type(ir, insn);
 
-    ir->opcode = rv_insn_fnmadds;
+    switch (decode_funct7(insn) & 0x3) { /* fmt: 00=S, 01=D */
+    case 0b00:
+        ir->opcode = rv_insn_fnmadds;
+        break;
+#if RV32_HAS(EXT_D)
+    case 0b01:
+        ir->opcode = rv_insn_fnmaddd;
+        break;
+#endif
+    default: /* illegal instruction */
+        return false;
+    }
     return true;
 }
 
@@ -1439,7 +1593,18 @@ static inline bool op_nmsub(rv_insn_t *ir, const uint32_t insn)
     /* decode R4-type */
     decode_r4type(ir, insn);
 
-    ir->opcode = rv_insn_fnmsubs;
+    switch (decode_funct7(insn) & 0x3) { /* fmt: 00=S, 01=D */
+    case 0b00:
+        ir->opcode = rv_insn_fnmsubs;
+        break;
+#if RV32_HAS(EXT_D)
+    case 0b01:
+        ir->opcode = rv_insn_fnmsubd;
+        break;
+#endif
+    default: /* illegal instruction */
+        return false;
+    }
     return true;
 }
 
@@ -1957,12 +2122,76 @@ static inline bool op_cfsw(rv_insn_t *ir, const uint32_t insn)
     return true;
 }
 
+#if RV32_HAS(EXT_D)
+/* C.FLDSP: CI-format (uimm scaled by 8) */
+static inline bool op_cfldsp(rv_insn_t *ir, const uint32_t insn)
+{
+    /* C.FLDSP 001 uimm[5] rd uimm[4:3|8:6] 10 */
+    uint16_t tmp = 0;
+    tmp |= (insn & 0x1000) >> 7; /* imm[5]   = inst[12]   */
+    tmp |= (insn & 0x60) >> 2;   /* imm[4:3] = inst[6:5]  */
+    tmp |= (insn & 0x1c) << 4;   /* imm[8:6] = inst[4:2]  */
+    ir->imm = tmp;
+    ir->rd = c_decode_rd(insn);
+    ir->opcode = rv_insn_cfldsp;
+    return true;
+}
+
+/* C.FSDSP: CSS-format (uimm scaled by 8) */
+static inline bool op_cfsdsp(rv_insn_t *ir, const uint32_t insn)
+{
+    /* C.FSDSP 101 uimm[5:3|8:6] rs2 10 */
+    uint16_t tmp = 0;
+    tmp |= (insn & 0x1c00) >> 7; /* imm[5:3] = inst[12:10] */
+    tmp |= (insn & 0x380) >> 1;  /* imm[8:6] = inst[9:7]   */
+    ir->imm = tmp;
+    ir->rs2 = c_decode_rs2(insn);
+    ir->opcode = rv_insn_cfsdsp;
+    return true;
+}
+
+/* C.FLD: CL-format (uimm scaled by 8) */
+static inline bool op_cfld(rv_insn_t *ir, const uint32_t insn)
+{
+    /* C.FLD 001 uimm[5:3] rs1' uimm[7:6] rd' 00 */
+    uint16_t tmp = 0;
+    tmp |= (insn & FC_IMM_12_10) >> 7; /* imm[5:3] = inst[12:10] */
+    tmp |= (insn & 0x60) << 1;         /* imm[7:6] = inst[6:5]   */
+    ir->imm = tmp;
+    ir->rd = c_decode_rdc(insn) | 0x08;
+    ir->rs1 = c_decode_rs1c(insn) | 0x08;
+    ir->opcode = rv_insn_cfld;
+    return true;
+}
+
+/* C.FSD: CS-format (uimm scaled by 8) */
+static inline bool op_cfsd(rv_insn_t *ir, const uint32_t insn)
+{
+    /* C.FSD 101 uimm[5:3] rs1' uimm[7:6] rs2' 00 */
+    uint16_t tmp = 0;
+    tmp |= (insn & FC_IMM_12_10) >> 7; /* imm[5:3] = inst[12:10] */
+    tmp |= (insn & 0x60) << 1;         /* imm[7:6] = inst[6:5]   */
+    ir->imm = tmp;
+    ir->rs1 = c_decode_rs1c(insn) | 0x08;
+    ir->rs2 = c_decode_rs2c(insn) | 0x08;
+    ir->opcode = rv_insn_cfsd;
+    return true;
+}
+#endif /* RV32_HAS(EXT_D) */
+
 #else /* !(RV32_HAS(EXT_C) && RV32_HAS(EXT_F)) */
 #define op_cfsw OP_UNIMP
 #define op_cflw OP_UNIMP
 #define op_cfswsp OP_UNIMP
 #define op_cflwsp OP_UNIMP
 #endif /* RV32_HAS(EXT_C) && RV32_HAS(EXT_F) */
+
+#if !(RV32_HAS(EXT_C) && RV32_HAS(EXT_D))
+#define op_cfsd OP_UNIMP
+#define op_cfld OP_UNIMP
+#define op_cfsdsp OP_UNIMP
+#define op_cfldsp OP_UNIMP
+#endif /* !(RV32_HAS(EXT_C) && RV32_HAS(EXT_D)) */
 
 /* handler for all unimplemented opcodes */
 static inline bool op_unimp(rv_insn_t *ir UNUSED, uint32_t insn UNUSED)
@@ -1998,11 +2227,11 @@ bool rv_decode(rv_insn_t *ir, uint32_t insn)
     static const decode_t rvc_jump_table[] = {
     //  00             01             10          11
         OP(caddi4spn), OP(caddi),     OP(cslli),  OP(unimp),  // 000
-        OP(unimp),      OP(cjal),      OP(unimp), OP(unimp),  // 001
+        OP(cfld),      OP(cjal),      OP(cfldsp), OP(unimp),  // 001
         OP(clw),       OP(cli),       OP(clwsp),  OP(unimp),  // 010
         OP(cflw),      OP(clui),      OP(cflwsp), OP(unimp),  // 011
         OP(unimp),     OP(cmisc_alu), OP(ccr),    OP(unimp),  // 100
-        OP(unimp),      OP(cj),        OP(unimp), OP(unimp),  // 101
+        OP(cfsd),      OP(cj),        OP(cfsdsp), OP(unimp),  // 101
         OP(csw),       OP(cbeqz),     OP(cswsp),  OP(unimp),  // 110
         OP(cfsw),      OP(cbnez),     OP(cfswsp), OP(unimp),  // 111
     };

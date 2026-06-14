@@ -1271,6 +1271,232 @@ RVOP(fmvwx,
      { set_f32(rv, ir->rd, (softfloat_float32_t){.v = rv->X[ir->rs1]}); })
 #endif
 
+/* RV32D Standard Extension (Spike U) */
+
+#if RV32_HAS(EXT_D)
+/* FLD — load 64-bit double (two 32-bit reads, little-endian) */
+RVOP(fld, {
+    const uint32_t addr = rv->X[ir->rs1] + ir->imm;
+    RV_EXC_MISALIGN_HANDLER(7, LOAD, false, 1);
+    const uint64_t lo = MEM_READ_W(rv, addr);
+    const uint64_t hi = MEM_READ_W(rv, addr + 4);
+    set_f64(rv, ir->rd, (softfloat_float64_t){.v = lo | (hi << 32)});
+})
+
+/* FSD — store 64-bit double */
+RVOP(fsd, {
+    const uint32_t addr = rv->X[ir->rs1] + ir->imm;
+    RV_EXC_MISALIGN_HANDLER(7, STORE, false, 1);
+    const uint64_t value = get_f64(rv, ir->rs2).v;
+    MEM_WRITE_W(rv, addr, (uint32_t) value);
+    MEM_WRITE_W(rv, addr + 4, (uint32_t) (value >> 32));
+#if RV32_HAS(ARCH_TEST)
+    check_tohost_write(rv, addr, (uint32_t) value);
+#endif
+})
+
+/* FMADD.D */
+RVOP(fmaddd, {
+    set_rounding_mode(rv, ir->rm);
+    set_f64(rv, ir->rd,
+            f64_mulAdd(get_f64(rv, ir->rs1), get_f64(rv, ir->rs2),
+                       get_f64(rv, ir->rs3)));
+    set_fflag(rv);
+})
+
+/* FMSUB.D */
+RVOP(fmsubd, {
+    set_rounding_mode(rv, ir->rm);
+    softfloat_float64_t tmp = get_f64(rv, ir->rs3);
+    tmp.v ^= FMASK_SIGN_D;
+    set_f64(rv, ir->rd,
+            f64_mulAdd(get_f64(rv, ir->rs1), get_f64(rv, ir->rs2), tmp));
+    set_fflag(rv);
+})
+
+/* FNMSUB.D */
+RVOP(fnmsubd, {
+    set_rounding_mode(rv, ir->rm);
+    softfloat_float64_t tmp = get_f64(rv, ir->rs1);
+    tmp.v ^= FMASK_SIGN_D;
+    set_f64(rv, ir->rd,
+            f64_mulAdd(tmp, get_f64(rv, ir->rs2), get_f64(rv, ir->rs3)));
+    set_fflag(rv);
+})
+
+/* FNMADD.D */
+RVOP(fnmaddd, {
+    set_rounding_mode(rv, ir->rm);
+    softfloat_float64_t tmp1 = get_f64(rv, ir->rs1);
+    softfloat_float64_t tmp2 = get_f64(rv, ir->rs3);
+    tmp1.v ^= FMASK_SIGN_D;
+    tmp2.v ^= FMASK_SIGN_D;
+    set_f64(rv, ir->rd, f64_mulAdd(tmp1, get_f64(rv, ir->rs2), tmp2));
+    set_fflag(rv);
+})
+
+/* FADD.D */
+RVOP(faddd, {
+    set_rounding_mode(rv, ir->rm);
+    set_f64(rv, ir->rd, f64_add(get_f64(rv, ir->rs1), get_f64(rv, ir->rs2)));
+    set_fflag(rv);
+})
+
+/* FSUB.D */
+RVOP(fsubd, {
+    set_rounding_mode(rv, ir->rm);
+    set_f64(rv, ir->rd, f64_sub(get_f64(rv, ir->rs1), get_f64(rv, ir->rs2)));
+    set_fflag(rv);
+})
+
+/* FMUL.D */
+RVOP(fmuld, {
+    set_rounding_mode(rv, ir->rm);
+    set_f64(rv, ir->rd, f64_mul(get_f64(rv, ir->rs1), get_f64(rv, ir->rs2)));
+    set_fflag(rv);
+})
+
+/* FDIV.D */
+RVOP(fdivd, {
+    set_rounding_mode(rv, ir->rm);
+    set_f64(rv, ir->rd, f64_div(get_f64(rv, ir->rs1), get_f64(rv, ir->rs2)));
+    set_fflag(rv);
+})
+
+/* FSQRT.D */
+RVOP(fsqrtd, {
+    set_rounding_mode(rv, ir->rm);
+    set_f64(rv, ir->rd, f64_sqrt(get_f64(rv, ir->rs1)));
+    set_fflag(rv);
+})
+
+/* FSGNJ.D */
+RVOP(fsgnjd, {
+    const softfloat_float64_t a = get_f64(rv, ir->rs1);
+    const softfloat_float64_t b = get_f64(rv, ir->rs2);
+    set_f64(rv, ir->rd,
+            (softfloat_float64_t){.v = (a.v & ~FMASK_SIGN_D) |
+                                       (b.v & FMASK_SIGN_D)});
+})
+
+/* FSGNJN.D */
+RVOP(fsgnjnd, {
+    const softfloat_float64_t a = get_f64(rv, ir->rs1);
+    const softfloat_float64_t b = get_f64(rv, ir->rs2);
+    set_f64(rv, ir->rd,
+            (softfloat_float64_t){.v = (a.v & ~FMASK_SIGN_D) |
+                                       (~b.v & FMASK_SIGN_D)});
+})
+
+/* FSGNJX.D */
+RVOP(fsgnjxd, {
+    const softfloat_float64_t a = get_f64(rv, ir->rs1);
+    const softfloat_float64_t b = get_f64(rv, ir->rs2);
+    set_f64(rv, ir->rd,
+            (softfloat_float64_t){.v = a.v ^ (b.v & FMASK_SIGN_D)});
+})
+
+/* FMIN.D */
+RVOP(fmind, {
+    const softfloat_float64_t a = get_f64(rv, ir->rs1);
+    const softfloat_float64_t b = get_f64(rv, ir->rs2);
+    if (f64_isSignalingNaN(a) || f64_isSignalingNaN(b))
+        rv->csr_fcsr |= FFLAG_INVALID_OP;
+    bool less = f64_lt_quiet(a, b) || (f64_eq(a, b) && (a.v & FMASK_SIGN_D));
+    if (is_nan_d(a.v) && is_nan_d(b.v))
+        set_f64(rv, ir->rd, (softfloat_float64_t){.v = RV_NAN_D});
+    else
+        set_f64(rv, ir->rd, (less || is_nan_d(b.v)) ? a : b);
+})
+
+/* FMAX.D */
+RVOP(fmaxd, {
+    const softfloat_float64_t a = get_f64(rv, ir->rs1);
+    const softfloat_float64_t b = get_f64(rv, ir->rs2);
+    if (f64_isSignalingNaN(a) || f64_isSignalingNaN(b))
+        rv->csr_fcsr |= FFLAG_INVALID_OP;
+    bool greater = f64_lt_quiet(b, a) || (f64_eq(a, b) && (b.v & FMASK_SIGN_D));
+    if (is_nan_d(a.v) && is_nan_d(b.v))
+        set_f64(rv, ir->rd, (softfloat_float64_t){.v = RV_NAN_D});
+    else
+        set_f64(rv, ir->rd, (greater || is_nan_d(b.v)) ? a : b);
+})
+
+/* FCVT.S.D — double to single (NaN-boxed single result) */
+RVOP(fcvtsd, {
+    set_rounding_mode(rv, ir->rm);
+    set_f32(rv, ir->rd, f64_to_f32(get_f64(rv, ir->rs1)));
+    set_fflag(rv);
+})
+
+/* FCVT.D.S — single to double (exact widening) */
+RVOP(fcvtds, {
+    set_f64(rv, ir->rd, f32_to_f64(get_f32(rv, ir->rs1)));
+    set_fflag(rv);
+})
+
+/* FCVT.W.D */
+RVOP(fcvtwd, {
+    set_rounding_mode(rv, ir->rm);
+    uint32_t ret = f64_to_i32(get_f64(rv, ir->rs1), softfloat_roundingMode, true);
+    if (ir->rd)
+        rv->X[ir->rd] = ret;
+    set_fflag(rv);
+})
+
+/* FCVT.WU.D */
+RVOP(fcvtwud, {
+    set_rounding_mode(rv, ir->rm);
+    uint32_t ret =
+        f64_to_ui32(get_f64(rv, ir->rs1), softfloat_roundingMode, true);
+    if (ir->rd)
+        rv->X[ir->rd] = ret;
+    set_fflag(rv);
+})
+
+/* FEQ.D */
+RVOP(feqd, {
+    uint32_t ret = f64_eq(get_f64(rv, ir->rs1), get_f64(rv, ir->rs2));
+    if (ir->rd)
+        rv->X[ir->rd] = ret;
+    set_fflag(rv);
+})
+
+/* FLT.D */
+RVOP(fltd, {
+    uint32_t ret = f64_lt(get_f64(rv, ir->rs1), get_f64(rv, ir->rs2));
+    if (ir->rd)
+        rv->X[ir->rd] = ret;
+    set_fflag(rv);
+})
+
+/* FLE.D */
+RVOP(fled, {
+    uint32_t ret = f64_le(get_f64(rv, ir->rs1), get_f64(rv, ir->rs2));
+    if (ir->rd)
+        rv->X[ir->rd] = ret;
+    set_fflag(rv);
+})
+
+/* FCLASS.D */
+RVOP(fclassd, {
+    if (ir->rd)
+        rv->X[ir->rd] = calc_fclass_d(get_f64(rv, ir->rs1).v);
+})
+
+/* FCVT.D.W — int to double (exact) */
+RVOP(fcvtdw, {
+    set_f64(rv, ir->rd, i32_to_f64(rv->X[ir->rs1]));
+    set_fflag(rv);
+})
+
+/* FCVT.D.WU — unsigned int to double (exact) */
+RVOP(fcvtdwu, {
+    set_f64(rv, ir->rd, ui32_to_f64(rv->X[ir->rs1]));
+    set_fflag(rv);
+})
+#endif
+
 /* RV32C Standard Extension */
 
 #if RV32_HAS(EXT_C)
@@ -1621,14 +1847,14 @@ RVOP(cswsp, {
 RVOP(cflwsp, {
     const uint32_t addr = rv->X[rv_reg_sp] + ir->imm;
     RV_EXC_MISALIGN_HANDLER(3, LOAD, false, 1);
-    rv->F[ir->rd].v = MEM_READ_W(rv, addr);
+    set_f32(rv, ir->rd, (softfloat_float32_t){.v = MEM_READ_W(rv, addr)});
 })
 
 /* C.FSWSP */
 RVOP(cfswsp, {
     const uint32_t addr = rv->X[rv_reg_sp] + ir->imm;
     RV_EXC_MISALIGN_HANDLER(3, STORE, false, 1);
-    const uint32_t value = rv->F[ir->rs2].v;
+    const uint32_t value = get_f32_bits(rv, ir->rs2);
     MEM_WRITE_W(rv, addr, value);
 #if RV32_HAS(ARCH_TEST)
     check_tohost_write(rv, addr, value);
@@ -1639,17 +1865,61 @@ RVOP(cfswsp, {
 RVOP(cflw, {
     const uint32_t addr = rv->X[ir->rs1] + (uint32_t) ir->imm;
     RV_EXC_MISALIGN_HANDLER(3, LOAD, false, 1);
-    rv->F[ir->rd].v = MEM_READ_W(rv, addr);
+    set_f32(rv, ir->rd, (softfloat_float32_t){.v = MEM_READ_W(rv, addr)});
 })
 
 /* C.FSW */
 RVOP(cfsw, {
     const uint32_t addr = rv->X[ir->rs1] + (uint32_t) ir->imm;
     RV_EXC_MISALIGN_HANDLER(3, STORE, false, 1);
-    const uint32_t value = rv->F[ir->rs2].v;
+    const uint32_t value = get_f32_bits(rv, ir->rs2);
     MEM_WRITE_W(rv, addr, value);
 #if RV32_HAS(ARCH_TEST)
     check_tohost_write(rv, addr, value);
+#endif
+})
+#endif
+
+#if RV32_HAS(EXT_C) && RV32_HAS(EXT_D)
+/* C.FLDSP */
+RVOP(cfldsp, {
+    const uint32_t addr = rv->X[rv_reg_sp] + ir->imm;
+    RV_EXC_MISALIGN_HANDLER(7, LOAD, true, 1);
+    const uint64_t lo = MEM_READ_W(rv, addr);
+    const uint64_t hi = MEM_READ_W(rv, addr + 4);
+    set_f64(rv, ir->rd, (softfloat_float64_t){.v = lo | (hi << 32)});
+})
+
+/* C.FSDSP */
+RVOP(cfsdsp, {
+    const uint32_t addr = rv->X[rv_reg_sp] + ir->imm;
+    RV_EXC_MISALIGN_HANDLER(7, STORE, true, 1);
+    const uint64_t value = get_f64(rv, ir->rs2).v;
+    MEM_WRITE_W(rv, addr, (uint32_t) value);
+    MEM_WRITE_W(rv, addr + 4, (uint32_t) (value >> 32));
+#if RV32_HAS(ARCH_TEST)
+    check_tohost_write(rv, addr, (uint32_t) value);
+#endif
+})
+
+/* C.FLD */
+RVOP(cfld, {
+    const uint32_t addr = rv->X[ir->rs1] + (uint32_t) ir->imm;
+    RV_EXC_MISALIGN_HANDLER(7, LOAD, true, 1);
+    const uint64_t lo = MEM_READ_W(rv, addr);
+    const uint64_t hi = MEM_READ_W(rv, addr + 4);
+    set_f64(rv, ir->rd, (softfloat_float64_t){.v = lo | (hi << 32)});
+})
+
+/* C.FSD */
+RVOP(cfsd, {
+    const uint32_t addr = rv->X[ir->rs1] + (uint32_t) ir->imm;
+    RV_EXC_MISALIGN_HANDLER(7, STORE, true, 1);
+    const uint64_t value = get_f64(rv, ir->rs2).v;
+    MEM_WRITE_W(rv, addr, (uint32_t) value);
+    MEM_WRITE_W(rv, addr + 4, (uint32_t) (value >> 32));
+#if RV32_HAS(ARCH_TEST)
+    check_tohost_write(rv, addr, (uint32_t) value);
 #endif
 })
 #endif

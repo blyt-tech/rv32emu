@@ -747,6 +747,55 @@ CONSTOPT(fcvtswu, {})
 CONSTOPT(fmvwx, {})
 #endif
 
+/* RV32D Standard Extension (Spike U) — FP isn't constant-folded; ops that
+ * write an integer register invalidate its constant tracking. */
+#if RV32_HAS(EXT_D)
+CONSTOPT(fld, {})
+CONSTOPT(fsd, {})
+CONSTOPT(fmaddd, {})
+CONSTOPT(fmsubd, {})
+CONSTOPT(fnmsubd, {})
+CONSTOPT(fnmaddd, {})
+CONSTOPT(faddd, {})
+CONSTOPT(fsubd, {})
+CONSTOPT(fmuld, {})
+CONSTOPT(fdivd, {})
+CONSTOPT(fsqrtd, {})
+CONSTOPT(fsgnjd, {})
+CONSTOPT(fsgnjnd, {})
+CONSTOPT(fsgnjxd, {})
+CONSTOPT(fmind, {})
+CONSTOPT(fmaxd, {})
+CONSTOPT(fcvtsd, {})
+CONSTOPT(fcvtds, {})
+CONSTOPT(fcvtwd, {
+    if (ir->rd)
+        info->is_constant[ir->rd] = false;
+})
+CONSTOPT(fcvtwud, {
+    if (ir->rd)
+        info->is_constant[ir->rd] = false;
+})
+CONSTOPT(feqd, {
+    if (ir->rd)
+        info->is_constant[ir->rd] = false;
+})
+CONSTOPT(fltd, {
+    if (ir->rd)
+        info->is_constant[ir->rd] = false;
+})
+CONSTOPT(fled, {
+    if (ir->rd)
+        info->is_constant[ir->rd] = false;
+})
+CONSTOPT(fclassd, {
+    if (ir->rd)
+        info->is_constant[ir->rd] = false;
+})
+CONSTOPT(fcvtdw, {})
+CONSTOPT(fcvtdwu, {})
+#endif
+
 /* RV32C Standard Extension */
 
 #if RV32_HAS(EXT_C)
@@ -1038,6 +1087,13 @@ CONSTOPT(cflw, {})
 
 /* C.FSW */
 CONSTOPT(cfsw, {})
+#endif
+
+#if RV32_HAS(EXT_D) && RV32_HAS(EXT_C)
+CONSTOPT(cfldsp, {})
+CONSTOPT(cfsdsp, {})
+CONSTOPT(cfld, {})
+CONSTOPT(cfsd, {})
 #endif
 
 #if RV32_HAS(Zba)
