@@ -136,6 +136,48 @@ static inline bool is_nan_d(uint64_t f)
     return (expn == FMASK_EXPN_D && frac);
 }
 
+/* ---- NaN-boxed FLEN=64 register-file accessors (Spike U) -----------------
+ * The FP register file (rv->F[]) is 64-bit. A single-precision value is stored
+ * NaN-boxed: low 32 bits hold the f32, upper 32 bits are all ones. Per the
+ * RISC-V spec, a single-precision op that reads an improperly boxed source sees
+ * the canonical NaN (0x7FC00000); single-precision results are written boxed.
+ * Double-precision ops use the full 64 bits.
+ */
+#define FBOX_HI_MASK 0xFFFFFFFF00000000ULL
+#define RV_CANON_NAN_F 0x7FC00000U
+
+/* Read a single-precision operand with NaN-box validation. */
+static inline softfloat_float32_t get_f32(const riscv_t *rv, uint8_t n)
+{
+    const uint64_t bits = rv->F[n].v;
+    if ((bits & FBOX_HI_MASK) == FBOX_HI_MASK)
+        return (softfloat_float32_t){.v = (uint32_t) bits};
+    return (softfloat_float32_t){.v = RV_CANON_NAN_F};
+}
+
+/* Write a single-precision result, NaN-boxing into the high bits. */
+static inline void set_f32(riscv_t *rv, uint8_t n, softfloat_float32_t v)
+{
+    rv->F[n].v = FBOX_HI_MASK | (uint64_t) v.v;
+}
+
+/* Raw low-32 read with no box check — for FSW and FMV.X.W, which transfer
+ * bits [31:0] of the register verbatim. */
+static inline uint32_t get_f32_bits(const riscv_t *rv, uint8_t n)
+{
+    return (uint32_t) rv->F[n].v;
+}
+
+static inline softfloat_float64_t get_f64(const riscv_t *rv, uint8_t n)
+{
+    return rv->F[n];
+}
+
+static inline void set_f64(riscv_t *rv, uint8_t n, softfloat_float64_t v)
+{
+    rv->F[n] = v;
+}
+
 static inline void set_fflag(riscv_t *rv)
 {
     if (softfloat_exceptionFlags & softfloat_flag_invalid)

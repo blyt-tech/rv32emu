@@ -1038,18 +1038,18 @@ RVOP(amomaxuw, {
 #if RV32_HAS(EXT_F)
 /* FLW */
 RVOP(flw, {
-    /* copy into the float register */
+    /* copy into the float register (NaN-boxed) */
     const uint32_t addr = rv->X[ir->rs1] + ir->imm;
     RV_EXC_MISALIGN_HANDLER(3, LOAD, false, 1);
-    rv->F[ir->rd].v = MEM_READ_W(rv, addr);
+    set_f32(rv, ir->rd, (softfloat_float32_t){.v = MEM_READ_W(rv, addr)});
 })
 
 /* FSW */
 RVOP(fsw, {
-    /* copy from float registers */
+    /* copy from float registers (raw low 32 bits) */
     const uint32_t addr = rv->X[ir->rs1] + ir->imm;
     RV_EXC_MISALIGN_HANDLER(3, STORE, false, 1);
-    const uint32_t value = rv->F[ir->rs2].v;
+    const uint32_t value = get_f32_bits(rv, ir->rs2);
     MEM_WRITE_W(rv, addr, value);
 #if RV32_HAS(ARCH_TEST)
     check_tohost_write(rv, addr, value);
@@ -1059,89 +1059,103 @@ RVOP(fsw, {
 /* FMADD.S */
 RVOP(fmadds, {
     set_rounding_mode(rv, ir->rm);
-    rv->F[ir->rd] = f32_mulAdd(rv->F[ir->rs1], rv->F[ir->rs2], rv->F[ir->rs3]);
+    set_f32(rv, ir->rd,
+            f32_mulAdd(get_f32(rv, ir->rs1), get_f32(rv, ir->rs2),
+                       get_f32(rv, ir->rs3)));
     set_fflag(rv);
 })
 
 /* FMSUB.S */
 RVOP(fmsubs, {
     set_rounding_mode(rv, ir->rm);
-    riscv_float_t tmp = rv->F[ir->rs3];
+    softfloat_float32_t tmp = get_f32(rv, ir->rs3);
     tmp.v ^= FMASK_SIGN;
-    rv->F[ir->rd] = f32_mulAdd(rv->F[ir->rs1], rv->F[ir->rs2], tmp);
+    set_f32(rv, ir->rd,
+            f32_mulAdd(get_f32(rv, ir->rs1), get_f32(rv, ir->rs2), tmp));
     set_fflag(rv);
 })
 
 /* FNMSUB.S */
 RVOP(fnmsubs, {
     set_rounding_mode(rv, ir->rm);
-    riscv_float_t tmp = rv->F[ir->rs1];
+    softfloat_float32_t tmp = get_f32(rv, ir->rs1);
     tmp.v ^= FMASK_SIGN;
-    rv->F[ir->rd] = f32_mulAdd(tmp, rv->F[ir->rs2], rv->F[ir->rs3]);
+    set_f32(rv, ir->rd,
+            f32_mulAdd(tmp, get_f32(rv, ir->rs2), get_f32(rv, ir->rs3)));
     set_fflag(rv);
 })
 
 /* FNMADD.S */
 RVOP(fnmadds, {
     set_rounding_mode(rv, ir->rm);
-    riscv_float_t tmp1 = rv->F[ir->rs1];
-    riscv_float_t tmp2 = rv->F[ir->rs3];
+    softfloat_float32_t tmp1 = get_f32(rv, ir->rs1);
+    softfloat_float32_t tmp2 = get_f32(rv, ir->rs3);
     tmp1.v ^= FMASK_SIGN;
     tmp2.v ^= FMASK_SIGN;
-    rv->F[ir->rd] = f32_mulAdd(tmp1, rv->F[ir->rs2], tmp2);
+    set_f32(rv, ir->rd, f32_mulAdd(tmp1, get_f32(rv, ir->rs2), tmp2));
     set_fflag(rv);
 })
 
 /* FADD.S */
 RVOP(fadds, {
     set_rounding_mode(rv, ir->rm);
-    rv->F[ir->rd] = f32_add(rv->F[ir->rs1], rv->F[ir->rs2]);
+    set_f32(rv, ir->rd, f32_add(get_f32(rv, ir->rs1), get_f32(rv, ir->rs2)));
     set_fflag(rv);
 })
 
 /* FSUB.S */
 RVOP(fsubs, {
     set_rounding_mode(rv, ir->rm);
-    rv->F[ir->rd] = f32_sub(rv->F[ir->rs1], rv->F[ir->rs2]);
+    set_f32(rv, ir->rd, f32_sub(get_f32(rv, ir->rs1), get_f32(rv, ir->rs2)));
     set_fflag(rv);
 })
 
 /* FMUL.S */
 RVOP(fmuls, {
     set_rounding_mode(rv, ir->rm);
-    rv->F[ir->rd] = f32_mul(rv->F[ir->rs1], rv->F[ir->rs2]);
+    set_f32(rv, ir->rd, f32_mul(get_f32(rv, ir->rs1), get_f32(rv, ir->rs2)));
     set_fflag(rv);
 })
 
 /* FDIV.S */
 RVOP(fdivs, {
     set_rounding_mode(rv, ir->rm);
-    rv->F[ir->rd] = f32_div(rv->F[ir->rs1], rv->F[ir->rs2]);
+    set_f32(rv, ir->rd, f32_div(get_f32(rv, ir->rs1), get_f32(rv, ir->rs2)));
     set_fflag(rv);
 })
 
 /* FSQRT.S */
 RVOP(fsqrts, {
     set_rounding_mode(rv, ir->rm);
-    rv->F[ir->rd] = f32_sqrt(rv->F[ir->rs1]);
+    set_f32(rv, ir->rd, f32_sqrt(get_f32(rv, ir->rs1)));
     set_fflag(rv);
 })
 
 /* FSGNJ.S */
 RVOP(fsgnjs, {
-    rv->F[ir->rd].v =
-        (rv->F[ir->rs1].v & ~FMASK_SIGN) | (rv->F[ir->rs2].v & FMASK_SIGN);
+    const softfloat_float32_t a = get_f32(rv, ir->rs1);
+    const softfloat_float32_t b = get_f32(rv, ir->rs2);
+    set_f32(rv, ir->rd,
+            (softfloat_float32_t){.v = (a.v & ~FMASK_SIGN) |
+                                       (b.v & FMASK_SIGN)});
 })
 
 /* FSGNJN.S */
 RVOP(fsgnjns, {
-    rv->F[ir->rd].v =
-        (rv->F[ir->rs1].v & ~FMASK_SIGN) | (~rv->F[ir->rs2].v & FMASK_SIGN);
+    const softfloat_float32_t a = get_f32(rv, ir->rs1);
+    const softfloat_float32_t b = get_f32(rv, ir->rs2);
+    set_f32(rv, ir->rd,
+            (softfloat_float32_t){.v = (a.v & ~FMASK_SIGN) |
+                                       (~b.v & FMASK_SIGN)});
 })
 
 /* FSGNJX.S */
-RVOP(fsgnjxs,
-     { rv->F[ir->rd].v = rv->F[ir->rs1].v ^ (rv->F[ir->rs2].v & FMASK_SIGN); })
+RVOP(fsgnjxs, {
+    const softfloat_float32_t a = get_f32(rv, ir->rs1);
+    const softfloat_float32_t b = get_f32(rv, ir->rs2);
+    set_f32(rv, ir->rd,
+            (softfloat_float32_t){.v = a.v ^ (b.v & FMASK_SIGN)});
+})
 
 /* FMIN.S
  * In IEEE754-201x, fmin(x, y) return
@@ -1151,32 +1165,28 @@ RVOP(fsgnjxs,
  * When input is signaling NaN, raise invalid operation
  */
 RVOP(fmins, {
-    if (f32_isSignalingNaN(rv->F[ir->rs1]) ||
-        f32_isSignalingNaN(rv->F[ir->rs2]))
+    const softfloat_float32_t a = get_f32(rv, ir->rs1);
+    const softfloat_float32_t b = get_f32(rv, ir->rs2);
+    if (f32_isSignalingNaN(a) || f32_isSignalingNaN(b))
         rv->csr_fcsr |= FFLAG_INVALID_OP;
-    bool less = f32_lt_quiet(rv->F[ir->rs1], rv->F[ir->rs2]) ||
-                (f32_eq(rv->F[ir->rs1], rv->F[ir->rs2]) &&
-                 (rv->F[ir->rs1].v & FMASK_SIGN));
-    if (is_nan(rv->F[ir->rs1].v) && is_nan(rv->F[ir->rs2].v))
-        rv->F[ir->rd].v = RV_NAN;
+    bool less = f32_lt_quiet(a, b) || (f32_eq(a, b) && (a.v & FMASK_SIGN));
+    if (is_nan(a.v) && is_nan(b.v))
+        set_f32(rv, ir->rd, (softfloat_float32_t){.v = RV_NAN});
     else
-        rv->F[ir->rd] = (less || is_nan(rv->F[ir->rs2].v) ? rv->F[ir->rs1]
-                                                          : rv->F[ir->rs2]);
+        set_f32(rv, ir->rd, (less || is_nan(b.v)) ? a : b);
 })
 
 /* FMAX.S */
 RVOP(fmaxs, {
-    if (f32_isSignalingNaN(rv->F[ir->rs1]) ||
-        f32_isSignalingNaN(rv->F[ir->rs2]))
+    const softfloat_float32_t a = get_f32(rv, ir->rs1);
+    const softfloat_float32_t b = get_f32(rv, ir->rs2);
+    if (f32_isSignalingNaN(a) || f32_isSignalingNaN(b))
         rv->csr_fcsr |= FFLAG_INVALID_OP;
-    bool greater = f32_lt_quiet(rv->F[ir->rs2], rv->F[ir->rs1]) ||
-                   (f32_eq(rv->F[ir->rs1], rv->F[ir->rs2]) &&
-                    (rv->F[ir->rs2].v & FMASK_SIGN));
-    if (is_nan(rv->F[ir->rs1].v) && is_nan(rv->F[ir->rs2].v))
-        rv->F[ir->rd].v = RV_NAN;
+    bool greater = f32_lt_quiet(b, a) || (f32_eq(a, b) && (b.v & FMASK_SIGN));
+    if (is_nan(a.v) && is_nan(b.v))
+        set_f32(rv, ir->rd, (softfloat_float32_t){.v = RV_NAN});
     else
-        rv->F[ir->rd] = (greater || is_nan(rv->F[ir->rs2].v) ? rv->F[ir->rs1]
-                                                             : rv->F[ir->rs2]);
+        set_f32(rv, ir->rd, (greater || is_nan(b.v)) ? a : b);
 })
 
 /* FCVT.W.S and FCVT.WU.S convert a floating point number to an integer,
@@ -1186,7 +1196,7 @@ RVOP(fmaxs, {
 /* FCVT.W.S */
 RVOP(fcvtws, {
     set_rounding_mode(rv, ir->rm);
-    uint32_t ret = f32_to_i32(rv->F[ir->rs1], softfloat_roundingMode, true);
+    uint32_t ret = f32_to_i32(get_f32(rv, ir->rs1), softfloat_roundingMode, true);
     if (ir->rd)
         rv->X[ir->rd] = ret;
     set_fflag(rv);
@@ -1195,7 +1205,8 @@ RVOP(fcvtws, {
 /* FCVT.WU.S */
 RVOP(fcvtwus, {
     set_rounding_mode(rv, ir->rm);
-    uint32_t ret = f32_to_ui32(rv->F[ir->rs1], softfloat_roundingMode, true);
+    uint32_t ret =
+        f32_to_ui32(get_f32(rv, ir->rs1), softfloat_roundingMode, true);
     if (ir->rd)
         rv->X[ir->rd] = ret;
     set_fflag(rv);
@@ -1204,14 +1215,14 @@ RVOP(fcvtwus, {
 /* FMV.X.W */
 RVOP(fmvxw, {
     if (ir->rd)
-        rv->X[ir->rd] = rv->F[ir->rs1].v;
+        rv->X[ir->rd] = get_f32_bits(rv, ir->rs1);
 })
 
 /* FEQ.S performs a quiet comparison: it only sets the invalid operation
  * exception flag if either input is a signaling NaN.
  */
 RVOP(feqs, {
-    uint32_t ret = f32_eq(rv->F[ir->rs1], rv->F[ir->rs2]);
+    uint32_t ret = f32_eq(get_f32(rv, ir->rs1), get_f32(rv, ir->rs2));
     if (ir->rd)
         rv->X[ir->rd] = ret;
     set_fflag(rv);
@@ -1222,14 +1233,14 @@ RVOP(feqs, {
  * flag if either input is NaN.
  */
 RVOP(flts, {
-    uint32_t ret = f32_lt(rv->F[ir->rs1], rv->F[ir->rs2]);
+    uint32_t ret = f32_lt(get_f32(rv, ir->rs1), get_f32(rv, ir->rs2));
     if (ir->rd)
         rv->X[ir->rd] = ret;
     set_fflag(rv);
 })
 
 RVOP(fles, {
-    uint32_t ret = f32_le(rv->F[ir->rs1], rv->F[ir->rs2]);
+    uint32_t ret = f32_le(get_f32(rv, ir->rs1), get_f32(rv, ir->rs2));
     if (ir->rd)
         rv->X[ir->rd] = ret;
     set_fflag(rv);
@@ -1238,25 +1249,26 @@ RVOP(fles, {
 /* FCLASS.S */
 RVOP(fclasss, {
     if (ir->rd)
-        rv->X[ir->rd] = calc_fclass(rv->F[ir->rs1].v);
+        rv->X[ir->rd] = calc_fclass(get_f32(rv, ir->rs1).v);
 })
 
 /* FCVT.S.W */
 RVOP(fcvtsw, {
     set_rounding_mode(rv, ir->rm);
-    rv->F[ir->rd] = i32_to_f32(rv->X[ir->rs1]);
+    set_f32(rv, ir->rd, i32_to_f32(rv->X[ir->rs1]));
     set_fflag(rv);
 })
 
 /* FCVT.S.WU */
 RVOP(fcvtswu, {
     set_rounding_mode(rv, ir->rm);
-    rv->F[ir->rd] = ui32_to_f32(rv->X[ir->rs1]);
+    set_f32(rv, ir->rd, ui32_to_f32(rv->X[ir->rs1]));
     set_fflag(rv);
 })
 
 /* FMV.W.X */
-RVOP(fmvwx, { rv->F[ir->rd].v = rv->X[ir->rs1]; })
+RVOP(fmvwx,
+     { set_f32(rv, ir->rd, (softfloat_float32_t){.v = rv->X[ir->rs1]}); })
 #endif
 
 /* RV32C Standard Extension */

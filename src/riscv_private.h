@@ -281,8 +281,11 @@ struct riscv_internal {
     riscv_io_t io;
 
 #if RV32_HAS(EXT_F)
-    /* float registers */
-    riscv_float_t F[32];
+    /* Float register file. FLEN=64 when D is present (Spike U): single-precision
+     * values are NaN-boxed in the low 32 bits (upper 32 all ones). Always 64-bit
+     * storage so the layout is stable whether or not D is enabled; F-only ops go
+     * through the get_f32/set_f32 boxing accessors in softfp.h. */
+    softfloat_float64_t F[32];
     uint32_t csr_fcsr;
 #endif
 
